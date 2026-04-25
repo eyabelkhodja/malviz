@@ -10,9 +10,9 @@ __pycache__/
 .venv/
 
 # Model artifacts (too large for git)
-*.onnx
-*.onnx.data
-*.joblib
+malviz/models/*.onnx
+malviz/models/*.onnx.data
+malviz/models/*.joblib
 
 # OS
 .DS_Store

@@ -1,9 +1,7 @@
-import os, sys
+import sys
 from pathlib import Path
-from .converter import file_to_image
-from .inference import predict
+from .scanner import scan_file, DEFAULT_CONFIDENCE_THRESHOLD
 
-# ── Visual constants ──────────────────────────────────────────────────────────
 BANNER = r"""
  ███╗   ███╗ █████╗ ██╗    ██╗   ██╗██╗███████╗
  ████╗ ████║██╔══██╗██║    ██║   ██║██║╚════██║
@@ -11,7 +9,7 @@ BANNER = r"""
  ██║╚██╔╝██║██╔══██║██║    ╚██╗ ██╔╝██║ ██╔╝
  ██║ ╚═╝ ██║██║  ██║███████╗╚████╔╝ ██║ ██████║
  ╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝ ╚═══╝  ╚═╝ ╚═════╝
-   CNN-image-based Malware Scanner  |  v0.1.0
+   CNN-image-based Malware Scanner  |  v1.2.0
 """
 
 HELP_TEXT = """
@@ -22,8 +20,8 @@ HELP_TEXT = """
 ║  WHAT IS MALVIZ?                                                 ║
 ║  malviz is a CNN-image-based malware scanner. It converts        ║
 ║  binary executables into grayscale images and classifies         ║
-║  them using a ResNet18 + GIST + SVM pipeline trained on          ║
-║  the malimg dataset (25 Windows PE malware families).            ║
+║  them using a ResNet18 model trained on the malimg dataset       ║
+║  extended with clean Benign samples.                             ║
 ║                                                                  ║
 ║  SCOPE                                                           ║
 ║  Designed for Windows PE binaries: .exe  .dll  .sys  .scr        ║
@@ -34,19 +32,19 @@ HELP_TEXT = """
 ║  2. Enter the number of files to scan                            ║
 ║     → enter 0 to scan ALL files in the current directory         ║
 ║  3. Enter the full path to each file when prompted               ║
+║  4. Optionally set a confidence threshold (default: 0.90)        ║
 ║  4. Read the results                                             ║
 ║                                                                  ║
 ║  RESULT LEGEND                                                   ║
-║  ✓  Clean      — file is benign                                  ║
+║  ✓  Benign     — file is clean                                   ║
 ║  ⚠  MALWARE    — file matched a known malware family             ║
-║  ?  UNCERTAIN  — confidence below 50%, result unreliable         ║
+║  ?  UNCERTAIN  — confidence below threshold, result unreliable   ║
 ║  ⊘  SKIPPED    — file is not a supported binary format           ║
 ║  ✗  ERROR      — file could not be processed                     ║
 ║                                                                  ║
 ║  CONFIDENCE THRESHOLD                                            ║
-║  Results below 50% confidence are shown as UNCERTAIN.            ║
-║  This typically means the file is outside the model's            ║
-║  training distribution (e.g. Linux ELF, Android APK).            ║
+║  Default is 0.90. Lower it to get more verdicts,                 ║
+║  raise it to be more conservative.                               ║
 ║                                                                  ║
 ║  COMMANDS                                                        ║
 ║  help   — show this help screen                                  ║
@@ -63,10 +61,7 @@ HELP_TEXT = """
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
-DIVIDER    = "  " + "─" * 54
-CONFIDENCE_THRESHOLD = 0.50
-
-# ── Binary detection ──────────────────────────────────────────────────────────
+DIVIDER = "  " + "─" * 54
 BINARY_EXTENSIONS = {
     ".exe", ".dll", ".sys", ".elf", ".bin",
     ".so", ".dylib", ".scr", ".drv", ".ocx"
@@ -85,8 +80,8 @@ def is_binary_file(path: Path) -> bool:
     except Exception:
         return False
 
-# ── Scanning ──────────────────────────────────────────────────────────────────
-def scan_files(targets: list[Path]):
+
+def scan_files(targets: list[Path], threshold: float):
     clean, malware, uncertain, errors, skipped = 0, 0, 0, 0, 0
     print()
     print(DIVIDER)
@@ -106,21 +101,22 @@ def scan_files(targets: list[Path]):
             continue
 
         try:
-            img         = file_to_image(f)
-            label, conf = predict(img)
+            result = scan_file(f, threshold=threshold)
 
-            if conf < CONFIDENCE_THRESHOLD:
-                print(f"  ?  UNCERTAIN  [{conf*100:.1f}%]  {f}")
+            if result["result"] == "uncertain":
+                print(f"  ?  UNCERTAIN  [{result['confidence']*100:.1f}%]  {f}")
                 print(f"     └─ low confidence — file may be outside "
                       f"the model's training distribution")
                 uncertain += 1
 
-            elif label != "Benign":
-                print(f"  ⚠  MALWARE    [{conf*100:.1f}%]  {label:<20}  {f}")
+            elif result["result"] == "malware":
+                print(f"  ⚠  MALWARE    [{result['confidence']*100:.1f}%]  "
+                      f"{result['prediction']:<20}  {f}")
                 malware += 1
 
             else:
-                print(f"  ✓  Clean      [{conf*100:.1f}%]  {label:<20}  {f}")
+                print(f"  ✓  Benign     [{result['confidence']*100:.1f}%]  "
+                      f"{result['prediction']:<20}  {f}")
                 clean += 1
 
         except Exception as e:
@@ -130,7 +126,7 @@ def scan_files(targets: list[Path]):
 
     print(DIVIDER)
     print(f"""
-  ✓  Clean      : {clean}
+  ✓  Benign     : {clean}
   ⚠  Malware    : {malware}
   ?  Uncertain  : {uncertain}
   ✗  Errors     : {errors}
@@ -138,9 +134,8 @@ def scan_files(targets: list[Path]):
 """)
     print(DIVIDER)
 
-# ── Input helpers ─────────────────────────────────────────────────────────────
+
 def prompt(msg: str) -> str:
-    """Read input, handle quit and help globally."""
     raw = input(msg).strip()
     if raw.lower() == "quit":
         print("\n  Goodbye. Stay safe.\n")
@@ -150,7 +145,7 @@ def prompt(msg: str) -> str:
         return "__help__"
     return raw
 
-# ── Main loop ─────────────────────────────────────────────────────────────────
+
 def main():
     print(BANNER)
     print("  Malviz is a CNN-image-based malware scanner for Windows")
@@ -160,13 +155,36 @@ def main():
     print("  Type  'quit'  at any prompt to exit.")
     print()
 
+    # ── Ask for threshold once at session start ───────────────────
+    print(DIVIDER)
+    print(f"  Confidence threshold (default: {DEFAULT_CONFIDENCE_THRESHOLD})")
+    print("  Press Enter to keep default, or type a value (e.g. 0.75)")
+    print(DIVIDER)
+
     while True:
+        raw = prompt("\n  threshold > ")
+        if raw == "__help__":
+            continue
+        if raw == "":
+            threshold = DEFAULT_CONFIDENCE_THRESHOLD
+            break
+        try:
+            threshold = float(raw)
+            if 0.0 < threshold <= 1.0:
+                break
+            print("  ✗  Please enter a value between 0.01 and 1.0")
+        except ValueError:
+            print("  ✗  Please enter a valid number, 'help', or 'quit'.")
+
+    print(f"\n  Using threshold: {threshold}")
+
+    while True:
+        print()
         print(DIVIDER)
         print("  How many files do you want to scan?")
         print("  (enter 0 to scan ALL files in the current directory)")
         print(DIVIDER)
 
-        # ── Get number of files ───────────────────────────────────────────────
         while True:
             raw = prompt("\n  > ")
             if raw == "__help__":
@@ -180,7 +198,6 @@ def main():
             except ValueError:
                 print("  ✗  Please enter a valid number, 'help', or 'quit'.")
 
-        # ── Scan all files in current directory ───────────────────────────────
         if n == 0:
             targets = [f for f in Path(".").iterdir() if f.is_file()]
             if not targets:
@@ -188,9 +205,7 @@ def main():
             else:
                 print(f"\n  Scanning {len(targets)} file(s) "
                       f"in current directory...\n")
-                scan_files(targets)
-
-        # ── Scan specific files ───────────────────────────────────────────────
+                scan_files(targets, threshold)
         else:
             targets = []
             for i in range(n):
@@ -206,12 +221,11 @@ def main():
                         print(f"  ✗  File not found: {raw}  —  try again.")
 
             print(f"\n  Scanning {len(targets)} file(s)...")
-            scan_files(targets)
+            scan_files(targets, threshold)
 
-        # ── Loop back ─────────────────────────────────────────────────────────
         print("  Ready for next scan. "
               "(type 'quit' to exit or enter a number to scan again)")
-        print()
+
 
 if __name__ == "__main__":
     main()
