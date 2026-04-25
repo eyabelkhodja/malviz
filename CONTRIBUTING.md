@@ -1,6 +1,6 @@
 # Contributing to malviz
 
-This document explains how to set up the development environment, work with the model artifacts, update the pipeline, and publish new releases.
+This document explains how to set up the development environment, work with the model artifacts, update the pipeline, and publish new releases. This tool was created as a Personal Professional Project whose scope doesn't allow for too many risks. As such, many changes could potentially be implemented (creating versions compatible with Android and Linux for example). Any and all contributions are welcome, as long as all due credits are given.
 
 ---
 
