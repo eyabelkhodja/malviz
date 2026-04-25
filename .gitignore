@@ -1,0 +1,18 @@
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# Model artifacts (too large for git)
+*.onnx
+*.onnx.data
+*.joblib
+
+# OS
+.DS_Store
