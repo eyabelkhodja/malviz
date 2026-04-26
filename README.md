@@ -2,7 +2,7 @@
 
 > CNN-image-based Windows malware scanner — converts binary executables to grayscale images and classifies them using a fine-tuned ResNet18 model trained on the malimg dataset extended with clean Benign samples.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.2.1-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyPI](https://img.shields.io/pypi/v/malviz)
 ![License](https://img.shields.io/badge/license-MIT-green)
