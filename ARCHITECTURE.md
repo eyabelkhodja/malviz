@@ -20,7 +20,7 @@ This document describes the internal architecture of malviz, the design decision
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        malviz v1.2.0                        │
+│                        malviz v1.2.1                        │
 ├─────────────────┬───────────────────────────────────────────┤
 │   cli.py        │  Interactive session manager               │
 │                 │  • Banner + help screen                    │
